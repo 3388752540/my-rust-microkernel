@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "kernel",
+    "user/init",
+    "user/shell",
+    "user/drivers/virtio_disk",
+    "common", "runner",
+]
+resolver = "2"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true

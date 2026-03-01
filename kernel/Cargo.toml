@@ -1,0 +1,16 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# ✅ 对！这个才是给内核用的纯 no_std 接口
+bootloader_api = "0.11"
+uart_16550 = "0.3.0" # ✅ 引入标准串口驱动
+x86_64 = "0.14"
+
+[[bin]]
+name = "kernel"
+path = "src/main.rs"
+test = false
+bench = false

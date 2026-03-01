@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+.vscode/
+Cargo.lock
+
+# 如果你有编译生成的镜像文件
+*.iso
+*.bin
+*.img
