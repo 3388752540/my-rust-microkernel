@@ -1,9 +1,17 @@
+# Rust 编译产物
 /target
-**/*.rs.bk
-.vscode/
 Cargo.lock
 
-# 如果你有编译生成的镜像文件
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# QEMU 与日志
+*.log
+qemu-vga.bin
+
+# 操作系统镜像
 *.iso
 *.bin
-*.img

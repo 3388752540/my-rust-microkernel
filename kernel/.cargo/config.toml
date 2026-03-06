@@ -8,3 +8,9 @@ build-std-features = ["compiler-builtins-mem"]
 [target.'cfg(all(target_arch = "x86_64", target_os = "none"))']
 # 我们稍后会换一种方式运行，暂时把 runner 留空或注释掉
 # runner = "bootimage runner" 
+rustflags = [
+# 强制所有函数调用使用 static 模式，减少重定位开销
+"-C", "relocation-model=static",
+# 告诉编译器不要为这个目标生成 SIMD 指令（内核环境下 SIMD 会导致复杂的上下文切换问题）
+"-C", "target-feature=-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-3dnow,-3dnowa,-avx,-avx2",
+]
