@@ -4,13 +4,20 @@ members = [
     "user/init",
     "user/shell",
     "user/drivers/virtio_disk",
-    "common", "runner",
+    "common","runner",
 ]
 resolver = "2"
 
+
+# 在 Cargo.toml 文件末尾添加：
+
 [profile.dev]
-panic = "abort"
+opt-level = 1       # 开启基础优化，完美避开 x86-interrupt 的栈破坏 Bug
+panic = "abort"     # 减少 panic 时的栈展开开销
 
 [profile.release]
+opt-level = 3       # 发布模式最高优化
+lto = true          # 开启链接时优化
 panic = "abort"
-lto = true
+
+

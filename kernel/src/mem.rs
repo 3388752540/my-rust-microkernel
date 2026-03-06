@@ -52,6 +52,7 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
 }
 
 pub unsafe fn init_mapper(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
+    unsafe {
     // 从 CR3 寄存器读取当前活动的 4 级页表物理帧
     let (level_4_table_frame, _) = Cr3::read();
 
@@ -62,4 +63,5 @@ pub unsafe fn init_mapper(physical_memory_offset: VirtAddr) -> OffsetPageTable<'
 
     let level_4_table = &mut *page_table_ptr;
     OffsetPageTable::new(level_4_table, physical_memory_offset)
+    }
 }

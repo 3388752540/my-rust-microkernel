@@ -1,3 +1,5 @@
+pub mod keyboard;
+
 use core::{future::Future, pin::Pin};
 use core::task::{Context, Poll};
 use core::sync::atomic::{AtomicU64, Ordering}; // 引入原子操作，确保多核安全

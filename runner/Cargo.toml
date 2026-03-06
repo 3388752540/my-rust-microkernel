@@ -1,8 +1,8 @@
 [package]
 name = "runner"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # ✅ Runner 运行在宿主机，所以这里用完整版 bootloader
-bootloader = { version = "0.11", features = ["bios"] }
+bootloader = "0.11.15"

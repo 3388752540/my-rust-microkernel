@@ -1,28 +1,26 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
-use crate::gdt;           // 导入 GDT 模块以获取 IST 索引
+use crate::gdt;           
+use crate::task::keyboard;   
 use lazy_static::lazy_static;
-use pic8259::ChainedPics; // 需要在 Cargo.toml 添加 pic8259 依赖
-use spin;                  // 需要在 Cargo.toml 添加 spin 依赖
+use pic8259::ChainedPics;    
+use spin;
+use core::arch::{naked_asm, asm}; // 必须引入内联汇编支持
 
 // ==========================================
 // 1. 硬件中断配置 (PIC)
 // ==========================================
 
-// 0-31 号中断被 CPU 异常占用。硬件中断从 32 (0x20) 开始映射。
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
-/// 初始化可编程中断控制器 (PIC)
-/// 我们使用 Mutex 包装它，因为在发送 EOI 信号时需要修改其内部状态
 pub static PICS: spin::Mutex<ChainedPics> =
     spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
-/// 定义中断索引，方便在 IDT 中注册
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum InterruptIndex {
-    Timer = PIC_1_OFFSET,        // 时钟中断：IRQ 0
-    Keyboard = PIC_1_OFFSET + 1, // 键盘中断：IRQ 1
+    Timer = PIC_1_OFFSET,        
+    Keyboard = PIC_1_OFFSET + 1, 
 }
 
 impl InterruptIndex {
@@ -31,15 +29,55 @@ impl InterruptIndex {
 }
 
 // ==========================================
-// 2. IDT 定义与初始化
+// 2. 汇编包装器宏 (解决 iretq 错位的核心)
+// ==========================================
+
+/// 该宏生成一个裸函数（Naked Function），手动保存寄存器现场
+/// 并在调用 Rust 逻辑后手动执行 iretq。
+macro_rules! handler_wrapper {
+    ($name:ident, $inner:ident) => {
+        // 修改 1: 在 Rust 2024 中，naked 属性必须写成 #[unsafe(naked)]
+        #[unsafe(naked)]
+        pub unsafe extern "C" fn $name() {
+            // 修改 2: Rust 2024 规定即使在 unsafe fn 内部，
+            // 调用汇编也必须包裹在 unsafe { ... } 块中
+             {
+                // 修改 3: 裸函数内部严禁使用普通的 asm!，必须使用 naked_asm!
+                naked_asm!(
+                    // 1. 保存现场
+                    "push rax", "push rbx", "push rcx", "push rdx",
+                    "push rdi", "push rsi", "push rbp", "push r8",
+                    "push r9", "push r10", "push r11", "push r12",
+                    "push r13", "push r14", "push r15",
+
+                    // 2. 传递栈指针并调用 Rust 函数
+                    "mov rdi, rsp",
+                    "call {inner}",
+
+                    // 3. 恢复现场
+                    "pop r15", "pop r14", "pop r13", "pop r12",
+                    "pop r11", "pop r10", "pop r9", "pop r8",
+                    "pop rbp", "pop rsi", "pop rdi", "pop rdx",
+                    "pop rcx", "pop rbx", "pop rax",
+
+                    // 4. 返回
+                    "iretq",
+                    inner = sym $inner,
+                );
+            }
+        }
+    };
+}
+
+// ==========================================
+// 3. IDT 定义与初始化
 // ==========================================
 
 lazy_static! {
-    /// 中断描述符表 (IDT)
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         
-        // --- CPU 异常注册 ---
+        // --- 注册异常 ---
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         unsafe {
             idt.double_fault
@@ -48,78 +86,75 @@ lazy_static! {
         }
         idt.page_fault.set_handler_fn(page_fault_handler);
 
-        // --- 硬件中断注册 ---
-        // 注册时钟中断
-        idt[InterruptIndex::Timer.as_usize()]
-            .set_handler_fn(timer_interrupt_handler);
-        // 注册键盘中断
-        idt[InterruptIndex::Keyboard.as_usize()]
-            .set_handler_fn(keyboard_interrupt_handler);
+        // --- 注册硬件中断 (使用汇编包装器地址) ---
+        unsafe {
+            idt[InterruptIndex::Timer.as_usize()]
+                .set_handler_addr(x86_64::VirtAddr::new(timer_handler as u64));
+            idt[InterruptIndex::Keyboard.as_usize()]
+                .set_handler_addr(x86_64::VirtAddr::new(keyboard_handler as u64));
+        }
         
         idt
     };
 }
 
-/// 将 IDT 加载到 CPU 寄存器
 pub fn init_idt() {
     IDT.load();
 }
 
 // ==========================================
-// 3. 中断处理函数实现 (Handlers)
+// 4. 中断处理函数逻辑 (Inner Handlers)
 // ==========================================
 
-/// 断点异常处理 (Breakpoint)
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
-    println!("[EXCEPTION] BREAKPOINT hit!\n{:#?}", stack_frame);
-}
+// 生成汇编入口点
+handler_wrapper!(timer_handler, timer_handler_inner);
+handler_wrapper!(keyboard_handler, keyboard_handler_inner);
 
-/// 双重故障处理 (Double Fault) - 致命错误
-extern "x86-interrupt" fn double_fault_handler(
-    stack_frame: InterruptStackFrame, _error_code: u64) -> ! 
-{
-    panic!("[FATAL] DOUBLE FAULT occurred!\n{:#?}", stack_frame);
-}
-
-/// 缺页异常处理 (Page Fault)
-extern "x86-interrupt" fn page_fault_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: PageFaultErrorCode,
-) {
-    use x86_64::registers::control::Cr2;
-    println!("\n[EXCEPTION] PAGE FAULT");
-    println!("Accessed Address: {:?}", Cr2::read());
-    println!("Error Code: {:?}", error_code);
-    println!("{:#?}", stack_frame);
-    loop { x86_64::instructions::hlt(); }
-}
-
-/// 时钟中断处理 (Timer)
-/// 作用：这是抢占式调度的基础。目前先打印 "."
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    // serial_print!("."); // 每秒会跳动几十次，建议调试时注释掉
-
-    // 必须发送 EOI (End of Interrupt) 信号
-    // 否则 PIC 会认为当前中断没处理完，永远不会发送下一个时钟信号
+/// 时钟中断 Rust 逻辑
+extern "C" fn timer_handler_inner(_stack_frame: *const InterruptStackFrame) {
     unsafe {
         PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
 }
 
-/// 键盘中断处理 (Keyboard)
-/// 作用：读取扫描码并解析
-extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+/// 键盘中断 Rust 逻辑
+extern "C" fn keyboard_handler_inner(_stack_frame: *const InterruptStackFrame) {
     use x86_64::instructions::port::Port;
 
-    // 键盘控制器的 I/O 端口是 0x60
     let mut port = Port::new(0x60);
     let scancode: u8 = unsafe { port.read() };
 
-    // 基础演示：打印扫描码
-    println!("[KEYBOARD] Scancode: {:#x}", scancode);
+    keyboard::add_scancode(scancode);
 
-    // 发送 EOI 信号以接收下一次按键
     unsafe {
         PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
     }
+}
+
+// ==========================================
+// 5. 异常处理函数 (保留，因为它们通常工作正常)
+// ==========================================
+
+extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
+    // 现在串口锁是安全的，可以打印了
+    // println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn double_fault_handler(
+    stack_frame: InterruptStackFrame, _error_code: u64) -> ! 
+{
+    panic!("[FATAL] DOUBLE FAULT\n{:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: PageFaultErrorCode,
+) {
+    use x86_64::registers::control::Cr2;
+    panic!(
+        "EXCEPTION: PAGE FAULT\nAccessed Address: {:?}\nError Code: {:?}\n{:#?}",
+        Cr2::read(),
+        error_code,
+        stack_frame
+    );
 }

@@ -14,3 +14,7 @@ rustflags = [
 # 告诉编译器不要为这个目标生成 SIMD 指令（内核环境下 SIMD 会导致复杂的上下文切换问题）
 "-C", "target-feature=-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-3dnow,-3dnowa,-avx,-avx2",
 ]
+
+# 使用 -accel kvm 开启硬件加速
+# 使用 -cpu host 让虚拟机看到你真实的 CPU 指令集
+runner = "bootimage runner -nographic"
