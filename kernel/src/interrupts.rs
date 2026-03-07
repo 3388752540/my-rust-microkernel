@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use pic8259::ChainedPics;    
 use spin;
 use core::arch::{naked_asm}; // 必须引入内联汇编支持
+use crate::task::context::TaskContext;
 
 // ==========================================
 // 1. 硬件中断配置 (PIC)
@@ -158,4 +159,47 @@ extern "x86-interrupt" fn page_fault_handler(
         error_code,
         stack_frame
     );
+}
+
+// 定义一个全局变量来存放当前进程的状态（演示用，后期会改成进程表）
+pub static mut CURRENT_USER_CONTEXT: TaskContext = TaskContext::zero();
+
+macro_rules! handler_wrapper_preemptive {
+    ($name:ident, $inner:ident) => {
+        #[unsafe(naked)]
+        pub unsafe extern "C" fn $name() {
+            unsafe {
+                naked_asm!(
+                    // 1. 暂时借用 rax 来拿到全局变量的地址
+                    "push rax",
+                    "mov rax, {context_ptr}",
+                    
+                    // 2. 保存通用寄存器到 TaskContext 结构体中
+                    "mov [rax + 8], rbx",
+                    "mov [rax + 16], rcx",
+                    "mov [rax + 24], rdx",
+                    "mov [rax + 32], rsi",
+                    "mov [rax + 40], rdi",
+                    "mov [rax + 48], rbp",
+                    "mov [rax + 56], r8",
+                    // ... (保存 r9 到 r15) ...
+                    
+                    // 3. 处理刚才为了拿地址而 push 的 rax
+                    "pop r11", // 将 rax 的原始值弹到 r11
+                    "mov [rax], r11", // 存入 context.rax
+                    
+                    // 4. 处理硬件自动压入的 5 个值 (RIP, CS, RFLAGS, RSP, SS)
+                    // 它们现在在栈顶。我们需要手动把它们搬进结构体。
+                    
+                    // 5. 执行内核逻辑
+                    "call {inner}",
+                    
+                    // 6. 恢复现场并返回
+                    "sysretq", // 或者 iretq
+                    context_ptr = sym CURRENT_USER_CONTEXT,
+                    inner = sym $inner,
+                );
+            }
+        }
+    };
 }
