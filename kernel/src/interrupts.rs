@@ -4,7 +4,7 @@ use crate::task::keyboard;
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;    
 use spin;
-use core::arch::{naked_asm, asm}; // 必须引入内联汇编支持
+use core::arch::{naked_asm}; // 必须引入内联汇编支持
 
 // ==========================================
 // 1. 硬件中断配置 (PIC)
@@ -89,9 +89,10 @@ lazy_static! {
         // --- 注册硬件中断 (使用汇编包装器地址) ---
         unsafe {
             idt[InterruptIndex::Timer.as_usize()]
-                .set_handler_addr(x86_64::VirtAddr::new(timer_handler as u64));
+            .set_handler_addr(x86_64::VirtAddr::new(timer_handler as *const () as u64)); // 先转指针再转地址
+
             idt[InterruptIndex::Keyboard.as_usize()]
-                .set_handler_addr(x86_64::VirtAddr::new(keyboard_handler as u64));
+            .set_handler_addr(x86_64::VirtAddr::new(keyboard_handler as *const () as u64));
         }
         
         idt
@@ -135,7 +136,7 @@ extern "C" fn keyboard_handler_inner(_stack_frame: *const InterruptStackFrame) {
 // 5. 异常处理函数 (保留，因为它们通常工作正常)
 // ==========================================
 
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
+extern "x86-interrupt" fn breakpoint_handler(_stack_frame: InterruptStackFrame) {
     // 现在串口锁是安全的，可以打印了
     // println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
