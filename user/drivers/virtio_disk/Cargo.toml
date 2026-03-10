@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+
+
+# 添加下面这段：
+[[bin]]
+name = "virtio_disk"
+test = false
+bench = false

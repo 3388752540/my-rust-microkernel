@@ -12,7 +12,7 @@ static SCANCODE_QUEUE: OnceCell<ArrayQueue<u8>> = OnceCell::uninit();
 static WAKER: AtomicWaker = AtomicWaker::new();
 
 /// 由中断处理程序调用。通过 try_get 确保队列已初始化
-pub(crate) fn add_scancode(scancode: u8) {
+pub fn add_scancode(scancode: u8) {
     if let Ok(queue) = SCANCODE_QUEUE.try_get() {
         if let Err(_) = queue.push(scancode) {
             // 队列满时丢弃，不打印以保持中断处理速度

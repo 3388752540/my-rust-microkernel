@@ -3,23 +3,39 @@ name = "kernel"
 version = "0.1.0"
 edition = "2024"
 
-
 [dependencies]
-bootloader_api = "0.11.15" # 升级到最新补丁
-x86_64 = "0.14.13"
-uart_16550 = "0.3"
+bootloader_api = "0.11" 
+x86_64 = "0.14"
 spin = "0.9"
 lazy_static = { version = "1.4", features = ["spin_no_std"] }
+uart_16550 = "0.3"
 pic8259 = "0.10"
 pc-keyboard = "0.7"
 linked_list_allocator = "0.10"
 conquer-once = { version = "0.2", default-features = false }
 crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+xmas-elf = "0.9.1"
 
+# ----------------------------------------------------
+# 目标配置区 (Harness 必须为 false，交出测试控制权)
+# ----------------------------------------------------
+
+[lib]
+name = "kernel"
+path = "src/lib.rs"
+# 1. 必须为 false！否则单元测试会尝试链接标准库测试框架
+harness = false 
 
 [[bin]]
 name = "kernel"
 path = "src/main.rs"
-test = false
-bench = false
+# 2. 核心修正：这里必须设置 test = false
+# 这样 rust-analyzer 就不会尝试在 main.rs 里寻找不存在的 `test` crate
+test = false 
+
+[[test]]
+name = "basic_boot"
+path = "tests/basic_boot.rs"
+# 3. 集成测试必须禁用默认 harness
+harness = false

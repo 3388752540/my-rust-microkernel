@@ -2,8 +2,7 @@
 target = "x86_64-unknown-none"
 
 [target.'cfg(all(target_arch = "x86_64", target_os = "none"))']
-rustflags = [
-    "-C", "relocation-model=static",
-    # 暂时不需要像内核那样指定 linker.ld，除非你要控制加载地址
-    # 但必须指定这个，否则也会报错
+rustflags =[
+    "-C", "relocation-model=static", 
+    "-C", "no-redzone=y"   # <-- 必须加上这个 "-C"
 ]
