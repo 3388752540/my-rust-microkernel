@@ -108,6 +108,8 @@ extern "C" fn handle_syscall(id: u64, arg1: u64, arg2: u64) -> u64 {
             if let Some(mut mailbox) = INIT_MAILBOX.try_lock() {
                 if let Some(msg) = mailbox.take() {
                     unsafe { core::ptr::write_volatile(msg_ptr, msg); }
+                    
+                   
                     1 // 成功拿到信
                 } else {
                     0 // 信箱空的

@@ -1,53 +1,49 @@
 ```mermaid
-graph TD
-    %% --- 用户态 (Ring 3) ---
-    subgraph UserZone [用户空间 - 策略层]
-        direction TB
-        UI[交互式 Shell & 用户应用]
-        subgraph Srv [系统服务进程]
-            FS[VFS 文件系统] --- NET[网络协议栈] --- DISK[驱动服务]
+graph TB
+    subgraph User_Space [用户空间 - Ring 3]
+        INIT[Init Process / Echo Server]
+        LIB[User Syscall Library]
+        INIT --> LIB
+    end
+
+    subgraph Kernel_Space [内核空间 - Ring 0]
+        subgraph Core_Services [核心服务层]
+            SYSCALL[Syscall Handler]
+            IPC[Mailbox / IPC Dispatcher]
+            LOADER[ELF Loader]
+        end
+
+        subgraph Execution_Engine [异步调度引擎]
+            EXEC[Async Executor]
+            TASK[Task / Waker System]
+            EXEC <--> TASK
+        end
+
+        subgraph Memory_Management [内存管理系统]
+            PAGE[Paging / Mapper]
+            FRAME[Frame Allocator]
+            HEAP[Kernel Heap / alloc]
+        end
+
+        subgraph Hardware_Abstraction [硬件抽象层]
+            GDT[GDT / TSS / RSP0]
+            IDT[IDT / Naked Wrappers]
+            DRV[Serial / Timer Drivers]
         end
     end
 
-    %% --- 权限网关 ---
-    subgraph Gateway [特权级切换网关]
-        direction LR
-        Syscall[Syscall 高速入口] <--> IPC[异步消息总线]
+    subgraph Hardware [硬件层]
+        CPU[x86_64 CPU]
+        RAM[Physical RAM]
+        UART[UART / COM1]
     end
 
-    %% --- 微内核核心 (Ring 0) ---
-    subgraph KernelCore [微内核核心 - 机制层]
-        direction TB
-        
-        subgraph MemMgmt [1. 内存安全管理]
-            Frame[物理页分配] --> Paging[4级页表隔离] --> Heap[动态堆分配]
-        end
-
-        subgraph SMPMgmt [2. 多核对称处理]
-            BSP[主核引导逻辑] --> IPI[核间中断 IPI] --> PerCPU[CPU 本地存储]
-        end
-
-        subgraph TaskMgmt [3. 异步任务调度]
-            Exec[Waker 执行器] --> Ctx[寄存器现场切换]
-        end
-    end
-
-    %% --- 硬件抽象层 ---
-    subgraph HALZone [硬件抽象层 HAL]
-        ACPI[ACPI 拓扑探测] --- APIC[高级中断控制] --- UART[串口调试驱动]
-    end
-
-    %% --- 物理层 ---
-    HW((x86_64 多核物理硬件))
-
-    %% --- 总体流向 ---
-    HW ===> HALZone
-    HALZone ===> KernelCore
-    KernelCore <==> Gateway
-    Gateway <==> UserZone
-
-    %% 样式应用
-    class HW hardware;
-    class KernelCore,MemMgmt,SMPMgmt,TaskMgmt kernel;
-    class UserZone,UI,Srv,FS,NET,DISK user;
-    class Gateway,Syscall,IPC bridge;
+    %% 交互关系
+    LIB -- "syscall" --> SYSCALL
+    SYSCALL -- "sysretq" --> User_Space
+    DRV -- "IRQ" --> IDT
+    IDT -- "Event Waking" --> TASK
+    IDT -- "Message Push" --> IPC
+    IPC -- "sys_recv" --> INIT
+    PAGE -- "Mapping" --> RAM
+    CPU -- "Privilege Check" --> GDT

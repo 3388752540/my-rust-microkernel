@@ -17,6 +17,7 @@ pub mod mem;
 pub mod allocator;
 pub mod task;
 pub mod syscall;
+pub mod arch;
 
 use core::panic::PanicInfo;
 
@@ -28,7 +29,7 @@ pub fn init() {
     interrupts::init_idt();
     unsafe { interrupts::PICS.lock().initialize(); }
     syscall::init();
-    x86_64::instructions::interrupts::enable();
+    //x86_64::instructions::interrupts::enable();//在所有基础资源（内存、任务、同步原语）完全就绪之前，绝对不能开启硬件中断。
 }
 
 // ==========================================

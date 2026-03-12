@@ -94,27 +94,35 @@ fn scancode_to_char(scancode: u8) -> char {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    print_str("\n[INIT] Echo Server Online. Type characters:\n> ");
-
     let mut msg = Message { from: 0, to: 0, label: 0, payload: [0; 2] };
+    
+    let mut rsp: u64;
+    unsafe { core::arch::asm!("mov {}, rsp", out(reg) rsp); }
+    let my_name = if rsp > 0x3500_0000 { "[B]" } else { "[A]" };
 
     loop {
-        // 尝试收信
-        if sys_recv(&mut msg) == 1 {
-            match msg.label {
-                3 => {
-                    // 串口输入
-                    let c = msg.payload[0] as u8;
-                    // 回显字符
-                    sys_print_char(c);
-                },
-                _ => {}
+        // 1. 尝试接收 IPC 消息
+       if sys_recv(&mut msg) == 1 {
+            if msg.label == 3 {
+                let c = msg.payload[0] as u8;
+                // 用亮绿色打印回显，方便从一堆 [A][B] 中一眼认出
+                print_str("\x1b[32;1m"); 
+                sys_print_char(c);
+                print_str("\x1b[0m");
             }
-        } else {
-            // 没有消息时，执行 yield 挂起。
-            // 串口中断发生后，CPU 会自动从这里醒来。
-            sys_yield();
         }
+
+        // 2. 降低心跳频率，防止冲刷屏幕
+        // 每次循环只打一个点或名字，然后做个超长延迟
+        print_str(my_name);
+        
+        for _ in 0..1_000_000 { // 增加到 1500 万次循环
+            unsafe { core::arch::asm!("pause"); } 
+        }
+
+        // 3. 【关键修改】不要在用户态写 hlt！
+        // 如果想让出 CPU，可以调用 SYS_YIELD (12)
+        // 或者暂时直接注释掉 sys_yield(); 靠时钟中断强行切换
     }
 }
 
